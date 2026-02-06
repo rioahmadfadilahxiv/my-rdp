@@ -1,0 +1,50 @@
+name: RDP-Ngrok
+
+on: 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Download Ngrok
+        run: |
+          Invoke-WebRequest https://bin.equinox.io/c/4VmDzd7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+          Expand-Archive ngrok.zip
+      
+      - name: Auth Ngrok
+        run: .\ngrok\ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+      
+      - name: Aktifkan RDP Windows
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+      
+      - name: Buat Password User
+        run: |
+          $Password = ConvertTo-SecureString "Polije2026!" -AsPlainText -Force
+          New-LocalUser "AdminRDP" -Password $Password -Description "RDP User"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "AdminRDP"
+          Add-LocalGroupMember -Group "Administrators" -Member "AdminRDP"
+
+      - name: Jalankan Tunnel
+        run: Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp 3389"
+
+      - name: Tampilkan Detail Koneksi
+        run: |
+          $i = 0
+          while($i -lt 1) {
+            $response = Invoke-RestMethod -Uri http://localhost:4040/api/tunnels
+            $addr = $response.tunnels.public_url
+            if($addr) {
+              Write-Host "================================"
+              Write-Host "ALAMAT RDP: $addr"
+              Write-Host "USERNAME: AdminRDP"
+              Write-Host "PASSWORD: Polije2026!"
+              Write-Host "================================"
+              $i = 1
+            }
+            Start-Sleep -Seconds 5
+          }
+          Start-Sleep -Seconds 21600
